@@ -1,0 +1,15 @@
+{
+  "port": 3001,
+  "database": {
+    "host": "192.168.64.2",
+    "user": "username",
+    "password": "password",
+    "database": "main"
+  },
+  "jwt": {
+    "access_secret": "jwt_access",
+    "refresh_secret": "jwt_refresh",
+    "access_expired": "1m",
+    "refresh_expired": "30m"
+  }
+}

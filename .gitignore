@@ -3,6 +3,7 @@
 # dependencies
 /server/node_modules
 /server/dist
+/server/config.json
 /server/npm-debug.log*
 /server/yarn-debug.log*
 /server/yarn-error.log*

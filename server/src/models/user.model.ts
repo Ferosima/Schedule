@@ -1,10 +1,8 @@
-import bcrypt from "bcrypt";
-import db_connect from "../../db/config";
-import { validation } from "../middleware/validation";
-import {
-  USER_CREATE_VALIDATION,
-  USER_LOGIN_VALIDATION
-} from "../validation/user.validation";
+import bcrypt from 'bcrypt';
+import { validation } from '../services/validation.service';
+import db_connect from '../../db/config';
+import { USER_CREATE_VALIDATION, USER_LOGIN_VALIDATION } from '../validation/user.validation';
+import { TUser } from 'src/types/models';
 
 class UserModel {
   /**
@@ -16,18 +14,28 @@ class UserModel {
    * @memberof UserModel
    */
   static getUserByID = (req: any, result: any) => {
-    db_connect.query(
-      `SELECT * FROM users WHERE id = ${req.params.id}`,
-      (err, res) => {
-        if (err) {
-          console.log("ERROR getUserByIDList", { err });
-          result(400, err);
-        } else {
-          console.log("SUCCESS getUserByIDList", res);
-          result(null, res);
-        }
-      }
-    );
+    db_connect('users')
+      .select()
+      .where('id', req.params.id)
+      .then(data => {
+        result(null, data);
+      })
+      .catch(error => {
+        result(400, error);
+      });
+  };
+
+  static getUserByEmail = (email): TUser | undefined => {
+    db_connect('users')
+      .select()
+      .where('email', email)
+      .then(data => {
+        return data;
+      })
+      .catch(error => {
+        throw new Error(error);
+      });
+    return;
   };
 
   /**
@@ -49,24 +57,22 @@ class UserModel {
     else {
       const salt = await bcrypt.genSalt(10);
       // now we set user password to hashed password
-      console.log(req.body.password);
       req.body.password = await bcrypt.hash(req.body.password, salt);
 
-      db_connect.query(`INSERT INTO users SET ?`, req.body, (err, res) => {
-        // If DB error send error
-        if (err) {
-          if (err.code === "ER_DUP_ENTRY") {
+      db_connect('users')
+        .insert(req.body)
+        .then(data => {
+          result(null, data);
+        })
+        .catch(error => {
+          if (error.code === 'ER_DUP_ENTRY') {
             result(400, {
               success: false,
-              error: { email: "User with this email already exist" },
+              error: { email: 'User with this email already exist' },
             });
           }
-          result(400, { success: false, error: err });
-        } // Send success data
-        else {
-          result(null, res);
-        }
-      });
+          result(400, { success: false, error: error });
+        });
     }
   };
 
@@ -77,33 +83,51 @@ class UserModel {
     if (Object.keys(error_validation)?.length !== 0) {
       result(400, { success: false, message: error_validation });
     }
-    db_connect.query(
-      `SELECT * FROM users WHERE email = ?`,
-      req.body.email,
-      async (err, res: any) => {
-        // If db send error or user not found
-        if (err || !res?.length) {
-          result(400, {
-            success: false,
-            error: "Email or password is incorrect",
-          });
-        } // Send success data
-        else {
-          const user = res[0];
-          // Check password
-          const validPassword = await bcrypt.compare(req.body.password, user);
-          if (validPassword) {
-            // Remove password
-            user.password = undefined;
-            result(null, user);
-          }
-          result(400, {
-            success: false,
-            error: "Email or password is incorrect",
-          });
+
+    db_connect('users')
+      .select()
+      .where('email', req.body.email)
+      .then(async data => {
+        const user = data[0];
+        // Check password
+        const validPassword = await bcrypt.compare(req.body.password, user.password);
+        if (validPassword) {
+          // Remove password
+          user.password = undefined;
+          result(null, user);
         }
-      }
-    );
+        result(400, {
+          success: false,
+          error: 'Email or password is incorrect',
+        });
+      })
+      .catch(error => {
+        result(400, {
+          success: false,
+          error: 'Email or password is incorrect',
+        });
+      });
+  };
+
+  changePassword = async (req: any, result: any) => {
+    let token = req.body.token;
+    let password = req.body.password;
+
+    let isValidToken = await token.validate(token);
+
+    if (isValidToken.status) {
+      const salt = await bcrypt.genSalt(10);
+      let hash = await bcrypt.hash(password, salt);
+      await db_connect('users').update({ password: hash }).where({ id:isValidToken.token.user_id }).table('users');
+      await token.setUsed(isValidToken.token.token);
+      result.status(200);
+      result.send('Password changed!');
+    } else {
+      result.status(406);
+      result.send('Invalid Token');
+    }
+
+ 
   };
 }
 
